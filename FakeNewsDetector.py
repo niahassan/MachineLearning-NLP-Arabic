@@ -1,39 +1,56 @@
-import re
-from nltk.stem.porter import PorterStemmer
-from sklearn.feature_extraction.text import TfidfVectorizer
+# les importaions des bibliothèques
+import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.model_selection import train_test_split
-import pickle
-from sklearn.linear_model import LogisticRegressionCV
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
 
-df = pd.read_csv('data/corona_fake.csv')
+df = pd.read_txt('FakeNewsArabic.txt')         #lire le fichier des fake news
 
-df.loc[df['label'] == 'Fake', ['label']] = 'FAKE'
-df.loc[df['label'] == 'fake', ['label']] = 'FAKE'
-df.loc[df['source'] == 'facebook', ['source']] = 'Facebook'
-df.text.fillna(df.title, inplace=True)
+df = df.fillna('')
+df['title_text_source'] = df['title'] + ' ' + df['text'] + ' ' + df['source']
+df = df[df['label'] != '']
+df.loc[df['label'] == 'fake', 'label'] = 'FAKE'
+df.loc[df['label'] == 'Fake', 'label'] = 'FAKE'
+no_of_fakes = df.loc[df['label'] == 'FAKE'].count()[0]
+no_of_trues = df.loc[df['label'] == 'TRUE'].count()[0]
 
-df.loc[5]['label'] = 'FAKE'
-df.loc[15]['label'] = 'TRUE'
-df.loc[43]['label'] = 'FAKE'
-df.loc[131]['label'] = 'TRUE'
-df.loc[242]['label'] = 'FAKE'
+stop_words = set(stopwords.words('Arabic'))
 
-df = df.sample(frac=1).reset_index(drop=True)
-df.title.fillna('missing', inplace=True)
-df.source.fillna('missing', inplace=True)
 
-df['title_text'] = df['title'] + ' ' + df['text']
-df['label'].value_counts()
+def clean(text):           # nettoyage du texte
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0, test_size=0.5, shuffle=False)
 
-clf = LogisticRegressionCV(cv=5, scoring='accuracy', random_state=0, n_jobs=-1, verbose=3, max_iter=300).fit(X_train, y_train)
+    word_tokens = word_tokenize(text)
 
-fake_news_model = open('fake_news_model.sav', 'wb')
-pickle.dump(clf, fake_news_model)
-fake_news_model.close()
+    filtered_sentence = []
+    for word_token in word_tokens:
+        if word_token not in stop_words:
+            filtered_sentence.append(word_token)
 
-filename = 'fake_news_model.sav'
-saved_clf = pickle.load(open(filename, 'rb'))
+    # Joining words
+    text = (''.join(filtered_sentence))
+    return text
 
-saved_clf.score(X_test, y_test)
+
+df['title_text_source'] = df['title_text_source'].apply(clean)
+
+vectorizer = CountVectorizer()
+X = vectorizer.fit_transform(df['title_text_source'].values)
+X = X.toarray()
+
+y = df['label'].values
+
+# Entrainer l'algorithme
+X_train, X_test, y_train, y_test = train_test_split(X, y, shuffle=True, test_size=0.2, random_state=11)
+
+clf = MultinomialNB()
+clf.fit(X_train, y_train)
+
+#Application de l'algorithme
+def analyse(text):
+    sentence = clean(text)
+    vectorized_text = vectorizer.transform([text]).toarray()
+    result = clf.predict(vectorized_text)
+    return result[0]
